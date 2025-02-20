@@ -1,0 +1,68 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2761
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\paperw11900\paperh16840\margl1440\margr1440\vieww11520\viewh8400\viewkind0
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 -- Creazione del database per la knowledge base e la memoria vettoriale del chatbot\
+\
+-- 1\uc0\u65039 \u8419  Tabella PRINCIPALE per le informazioni strutturate\
+CREATE TABLE knowledge_base (\
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\
+    topic TEXT NOT NULL,  -- Argomento dell'informazione\
+    content TEXT NOT NULL, -- Testo dettagliato dell'informazione\
+    source TEXT CHECK (source IN ('admin', 'utente', 'esterno')), -- Origine dell'informazione\
+    user_id UUID REFERENCES admins(id) ON DELETE SET NULL, -- Chi ha inserito l'informazione\
+    status TEXT CHECK (status IN ('confermata', 'ipotetica', 'conflittuale')) DEFAULT 'ipotetica', -- Stato dell'informazione\
+    created_at TIMESTAMP DEFAULT now(),\
+    updated_at TIMESTAMP DEFAULT now() -- Registra l'ultima modifica\
+);\
+\
+-- 2\uc0\u65039 \u8419  Tabella per la MEMORIA VETTORIALE (Ottimizzata per PGVector)\
+CREATE TABLE vector_memory (\
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\
+    embedding VECTOR(1536) NOT NULL, -- Rappresentazione vettoriale dei dati (1536 dimensioni per compatibilit\'e0 con OpenAI)\
+    embedding_hash TEXT UNIQUE NOT NULL, -- Hash per evitare duplicati\
+    raw_text TEXT NOT NULL, -- Testo originale associato\
+    related_topics TEXT[], -- Argomenti correlati per migliorare il recupero delle informazioni\
+    knowledge_id UUID REFERENCES knowledge_base(id) ON DELETE CASCADE, -- Collegamento alla knowledge base\
+    created_at TIMESTAMP DEFAULT now()\
+);\
+\
+-- 3\uc0\u65039 \u8419  Tabella per TRACCIARE le interazioni e migliorare la qualit\'e0 delle risposte\
+CREATE TABLE user_interactions (\
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\
+    user_id UUID, -- Identificativo dell'utente (opzionale, se vogliamo personalizzare le interazioni)\
+    message TEXT NOT NULL, -- Testo del messaggio ricevuto\
+    response TEXT NOT NULL, -- Risposta generata dal chatbot\
+    confidence_score FLOAT DEFAULT 1.0, -- Livello di certezza della risposta generata\
+    knowledge_id UUID REFERENCES knowledge_base(id) ON DELETE SET NULL, -- Se l'interazione \'e8 collegata a una conoscenza\
+    created_at TIMESTAMP DEFAULT now()\
+);\
+\
+-- 4\uc0\u65039 \u8419  Tabella per gli ADMIN che possono aggiungere informazioni e confermare la knowledge base\
+CREATE TABLE admins (\
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\
+    name TEXT NOT NULL,\
+    email TEXT UNIQUE NOT NULL,\
+    created_at TIMESTAMP DEFAULT now()\
+);\
+\
+-- 5\uc0\u65039 \u8419  Tabella per le MODIFICHE alla knowledge base (storico versioning delle informazioni)\
+CREATE TABLE knowledge_history (\
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\
+    knowledge_id UUID REFERENCES knowledge_base(id) ON DELETE CASCADE,\
+    previous_content TEXT NOT NULL, -- Versione precedente dell'informazione\
+    operation_type TEXT CHECK (operation_type IN ('update', 'delete')), -- Tipo di operazione effettuata\
+    updated_at TIMESTAMP DEFAULT now(),\
+    updated_by UUID REFERENCES admins(id) ON DELETE SET NULL -- Chi ha aggiornato l'informazione\
+);\
+\
+-- INDICI per ottimizzare la velocit\'e0 delle ricerche vettoriali e temporali\
+CREATE INDEX idx_vector_memory_embedding ON vector_memory USING ivfflat (embedding);\
+CREATE INDEX idx_knowledge_topic ON knowledge_base (topic);\
+CREATE INDEX idx_user_interactions_message ON user_interactions USING gin (to_tsvector('english', message));\
+CREATE INDEX idx_knowledge_created_at ON knowledge_base (created_at);\
+CREATE INDEX idx_user_interactions_created_at ON user_interactions (created_at);\
+}

@@ -1,0 +1,222 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2761
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\paperw11900\paperh16840\margl1440\margr1440\vieww28300\viewh17700\viewkind0
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+
+\f0\fs30 \cf0 import \{ createClient \} from "@supabase/supabase-js";\
+import axios from "axios";\
+import crypto from "crypto"; // Per calcolare l'hash dell'embedding\
+\
+// Inizializzazione del client Supabase\
+const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_KEY!);\
+\
+/**\
+ * Gestione centralizzata degli errori\
+ */\
+function handleError(context: string, error: any) \{\
+    console.error(`Errore in $\{context\}:`, error);\
+\}\
+\
+/**\
+ * Esempio di logger pi\'f9 articolato per gestire diversi livelli di errore.\
+ * Potresti integrare un servizio esterno (Sentry, Datadog, ecc.) se necessario.\
+ */\
+enum ErrorSeverity \{\
+  INFO = "INFO",\
+  WARNING = "WARNING",\
+  CRITICAL = "CRITICAL"\
+\}\
+\
+function reportError(\
+  context: string,\
+  error: any,\
+  severity: ErrorSeverity = ErrorSeverity.WARNING\
+) \{\
+  // Log con maggiore dettaglio\
+  console.error(`[$\{new Date().toISOString()\}] [$\{severity\}] Error in $\{context\}:`, error);\
+\
+  // In caso di errori critici, potresti aggiungere notifica email, Slack, o segnalazione a un servizio esterno\
+  if (severity === ErrorSeverity.CRITICAL) \{\
+    // es. inviaNotificaCritica(error);\
+  \}\
+\}\
+\
+/**\
+ * Recupera informazioni testuali dalla knowledge base\
+ */\
+export async function getKnowledge(topic: string): Promise<string | null> \{\
+    const \{ data, error \} = await supabase\
+        .from("knowledge_base")\
+        .select("content")\
+        .eq("topic", topic)\
+        .eq("status", "confermata")\
+        .single();\
+    \
+    if (error) \{\
+        handleError("getKnowledge", error);\
+        return null;\
+    \}\
+    return data?.content || null;\
+\}\
+\
+/**\
+ * Memorizza una nuova informazione nella knowledge base\
+ */\
+export async function saveKnowledge(topic: string, content: string, source: "admin" | "utente" | "esterno"): Promise<boolean> \{\
+// Validazione base: verifica se topic e content non sono vuoti\
+if (!topic || !content) \{\
+  reportError("saveKnowledge", "Topic o content vuoti", ErrorSeverity.INFO);\
+  return false;\
+\}\
+\
+// Controllo duplicati su DB: cerca se esiste gi\'e0 un record con lo stesso topic e contenuto uguale\
+const \{ data: existing, error: queryError \} = await supabase\
+  .from("knowledge_base")\
+  .select("id, content")\
+  .eq("topic", topic);\
+\
+if (queryError) \{\
+  reportError("saveKnowledge", queryError, ErrorSeverity.WARNING);\
+  return false;\
+\}\
+\
+if (existing && existing.length > 0) \{\
+  // Controlla se content \'e8 identico\
+  // Oppure puoi adottare un criterio di similarit\'e0 pi\'f9 avanzato\
+  const isExactDuplicate = existing.some((row: any) => row.content === content);\
+  if (isExactDuplicate) \{\
+    // Log di duplicato rilevato\
+    reportError("saveKnowledge", "Duplicato rilevato per lo stesso topic e contenuto", ErrorSeverity.INFO);\
+    return false;\
+  \}\
+\}\
+\
+    const \{ error \} = await supabase.from("knowledge_base").insert(\{\
+        topic,\
+        content,\
+        source,\
+        status: source === "admin" ? "confermata" : "ipotetica"\
+    \});\
+    \
+    if (error) \{\
+        handleError("saveKnowledge", error);\
+        return false;\
+    \}\
+    return true;\
+\}\
+\
+/**\
+ * Aggiorna un'informazione nella knowledge base\
+ */\
+export async function updateKnowledge(topic: string, newContent: string): Promise<boolean> \{\
+    const \{ error \} = await supabase\
+        .from("knowledge_base")\
+        .update(\{ content: newContent, status: "confermata", updated_at: new Date() \})\
+        .eq("topic", topic);\
+\
+    if (error) \{\
+        handleError("updateKnowledge", error);\
+        return false;\
+    \}\
+    return true;\
+\}\
+\
+/**\
+ * Cancella un'informazione dalla knowledge base\
+ */\
+export async function deleteKnowledge(topic: string): Promise<boolean> \{\
+    const \{ error \} = await supabase\
+        .from("knowledge_base")\
+        .delete()\
+        .eq("topic", topic);\
+\
+    if (error) \{\
+        handleError("deleteKnowledge", error);\
+        return false;\
+    \}\
+    return true;\
+\}\
+\
+/**\
+ * Genera un embedding vettoriale per un testo usando OpenAI API (evita duplicati con hash)\
+ */\
+async function generateEmbedding(text: string): Promise<number[]> \{\
+    const hash = crypto.createHash("sha256").update(text).digest("hex");\
+    const \{ data, error \} = await supabase\
+        .from("vector_memory")\
+        .select("embedding")\
+        .eq("embedding_hash", hash)\
+        .single();\
+    \
+    if (data) return data.embedding; // Riutilizza embedding esistenti\
+    \
+    const response = await axios.post("https://api.openai.com/v1/embeddings", \{\
+        model: "text-embedding-ada-002",\
+        input: text\
+    \}, \{\
+        headers: \{ Authorization: `Bearer $\{process.env.OPENAI_API_KEY\}` \}\
+    \});\
+    \
+    return response.data.data[0].embedding;\
+\}\
+\
+/**\
+ * Salva un'informazione nella memoria vettoriale per ricerche semantiche (evita duplicati)\
+ */\
+export async function saveVectorMemory(text: string, knowledgeId?: string): Promise<boolean> \{\
+    const embedding = await generateEmbedding(text);\
+    const hash = crypto.createHash("sha256").update(text).digest("hex");\
+    // Verifica se esiste gi\'e0 un embedding con lo stesso hash\
+const \{ data: existingVector, error: existingVectorError \} = await supabase\
+  .from("vector_memory")\
+  .select("id")\
+  .eq("embedding_hash", hash)\
+  .single();\
+\
+if (existingVectorError) \{\
+  reportError("saveVectorMemory", existingVectorError, ErrorSeverity.WARNING);\
+  return false;\
+\}\
+\
+if (existingVector) \{\
+  // Gi\'e0 presente, niente insert\
+  reportError("saveVectorMemory", "Tentato salvataggio duplicato (stesso hash)", ErrorSeverity.INFO);\
+  return false;\
+\}\
+\
+    const \{ error \} = await supabase.from("vector_memory").insert(\{\
+        embedding,\
+        embedding_hash: hash,\
+        raw_text: text,\
+        knowledge_id: knowledgeId || null\
+    \});\
+    \
+    if (error) \{\
+        handleError("saveVectorMemory", error);\
+        return false;\
+    \}\
+    return true;\
+\}\
+\
+/**\
+ * Effettua una ricerca semantica nella memoria vettoriale e restituisce punteggi di similarit\'e0\
+ */\
+export async function searchVectorMemory(query: string, limit: number = 3): Promise<\{ text: string, score: number \}[]> \{\
+    const queryEmbedding = await generateEmbedding(query);\
+    \
+    const \{ data, error \} = await supabase.rpc("match_documents", \{\
+        query_embedding: queryEmbedding,\
+        match_threshold: 0.7,\
+        match_count: limit\
+    \});\
+    \
+    if (error) \{\
+        handleError("searchVectorMemory", error);\
+        return [];\
+    \}\
+    \
+    return data ? data.map((row: any) => (\{ text: row.raw_text, score: row.similarity \})) : [];\
+\}\
+}

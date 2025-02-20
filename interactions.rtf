@@ -1,0 +1,83 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2761
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\paperw11900\paperh16840\margl1440\margr1440\vieww11520\viewh8400\viewkind0
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 export const interactions = \{\
+  conversationFlow: `\
+    Il chatbot deve gestire una conversazione in modo naturale e intelligente, adattandosi alla modalit\'e0 in uso.\
+    - In normal mode, deve rispondere in modo chiaro ed efficace basandosi sulle informazioni esistenti.\
+    - In learning mode, deve interagire per raccogliere informazioni, facendo domande mirate senza ripetersi.\
+    - Deve essere in grado di riconoscere la progressione di un discorso, mantenere il contesto e adattare il tono in base all'utente.\
+    - Deve memorizzare preferenze e risposte frequenti per rendere le interazioni pi\'f9 personalizzate nel tempo.\
+  `,\
+  \
+  userEngagement: `\
+    - Adatta il tono della conversazione in base al livello di formalit\'e0 dell'utente e al contesto della discussione.\
+    - Se l'utente fornisce una risposta vaga, riformula la domanda per ottenere pi\'f9 dettagli.\
+    - Se l'utente sembra confuso, fornisci spiegazioni pi\'f9 dettagliate o esempi pratici.\
+    - Offri risposte proattive basate sulle interazioni precedenti, evitando di ripetere le stesse domande inutilmente.\
+    - Se rilevi emozioni negative (frustrazione, confusione), prova a offrire supporto o alternative pi\'f9 chiare.\
+  `,\
+  \
+  validationMechanism: `\
+    - Quando un'informazione viene fornita, conferma la sua accuratezza prima di memorizzarla.\
+    - Se ricevi informazioni contrastanti da pi\'f9 utenti, archivia la divergenza e richiedi ulteriori chiarimenti in futuro.\
+    - Utilizza feedback espliciti da utenti fidati per migliorare l\'92affidabilit\'e0 delle informazioni.\
+    - Segna le informazioni in attesa di verifica per un successivo controllo da parte degli admin.\
+    - Implementa un sistema di verifica progressiva: se pi\'f9 utenti confermano un'informazione, la sua affidabilit\'e0 aumenta.\
+  `,\
+  \
+  adaptiveBehavior: \{\
+    trackUserPatterns: (userId: string, userHistory: any) => \{\
+      // Registra interazioni passate per adattare il comportamento e migliorare l'esperienza utente\
+      if (!userHistory[userId]) \{\
+        userHistory[userId] = \{ interactionCount: 1, recentTopics: [], preferredTone: "neutro", confirmedFacts: [] \};\
+      \} else \{\
+        userHistory[userId].interactionCount += 1;\
+      \}\
+    \},\
+    \
+    suggestNewTopics: (previousTopics: string[]): string => \{\
+      // Suggerisce nuovi argomenti basandosi su quelli gi\'e0 discussi\
+      const availableTopics = ["Servizi avanzati", "Esperienze utente", "Personalizzazione", "Suggerimenti per migliorare il servizio", "Novit\'e0 recenti" ];\
+      const newTopics = availableTopics.filter(topic => !previousTopics.includes(topic));\
+      \
+      return newTopics.length > 0 ? `Potremmo discutere di $\{newTopics[0]\}. Ti interessa?` : "Abbiamo coperto molti argomenti, hai altre domande?";\
+    \},\
+    \
+    detectUncertainty: (userMessage: string): boolean => \{\
+      // Rileva se l'utente \'e8 incerto e richiede ulteriore spiegazione\
+      const uncertaintyIndicators = ["non so", "forse", "non sono sicuro", "mi sembra", "credo che", "potrebbe essere", "non ne sono certo"];\
+      return uncertaintyIndicators.some(indicator => userMessage.toLowerCase().includes(indicator));\
+    \},\
+    \
+    adjustTone: (userMessage: string, userHistory: any, userId: string): string => \{\
+      // Modifica il tono della risposta in base alla conversazione precedente e al livello di formalit\'e0 dell'utente\
+      const formalKeywords = ["buongiorno", "grazie", "per favore", "cordiali saluti", "gentile"];\
+      const informalKeywords = ["ciao", "hey", "ok", "va bene", "bella"];\
+      \
+      if (formalKeywords.some(word => userMessage.toLowerCase().includes(word))) \{\
+        userHistory[userId].preferredTone = "formale";\
+        return "formale";\
+      \}\
+      \
+      if (informalKeywords.some(word => userMessage.toLowerCase().includes(word))) \{\
+        userHistory[userId].preferredTone = "informale";\
+        return "informale";\
+      \}\
+      \
+      return userHistory[userId].preferredTone;\
+    \},\
+    \
+    resolveConflicts: (conflictingInfo: any[]): string => \{\
+      // Se ci sono informazioni contrastanti, trova un modo per risolverle\
+      return conflictingInfo.length > 1 \
+        ? "Ho ricevuto informazioni contrastanti su questo argomento. Puoi confermare la versione corretta?"\
+        : "Grazie per l'informazione! La aggiungo alla mia conoscenza.";\
+    \}\
+  \}\
+\};\
+}
